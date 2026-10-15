@@ -146,6 +146,12 @@ i.k{color:var(--k);font-style:normal}i.s{color:var(--s);font-style:normal}i.n{co
 .bar{height:8px;border-radius:99px;background:var(--s3);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--ac);border-radius:99px;font-style:normal;transition:width .3s}
 .qr small,.qp{display:block;font:11.5px var(--mono);color:var(--mu);margin-top:5px}.qp b{color:var(--tx)}
+.hi{display:flex;align-items:center;gap:4px;border:1px solid var(--ln);border-radius:12px;margin-bottom:8px;background:var(--s1)}
+.hi.on{border-color:var(--ac)}
+.hi>button:first-child{flex:1;min-width:0;text-align:left;padding:11px 12px}
+.hi b{display:block;font-size:14px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hi small{font:11.5px var(--mono);color:var(--mu)}
+.hi .ib{margin-right:4px}
 #toast{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:13px;z-index:40;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%}
 #toast.on{opacity:1}
 </style>
@@ -155,6 +161,7 @@ i.k{color:var(--k);font-style:normal}i.s{color:var(--s);font-style:normal}i.n{co
   <header>
     <div class="mark">&lt;/&gt;</div>
     <div class="ttl"><b>AI Lua Maker</b><span>GTPS.CLOUD</span></div>
+    <button class="ib" id="hisBtn" title="Riwayat chat"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
     <button class="ib" id="newBtn" title="Chat baru"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
     <button class="ib" id="setBtn" title="Pengaturan"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
@@ -191,6 +198,13 @@ i.k{color:var(--k);font-style:normal}i.s{color:var(--s);font-style:normal}i.n{co
   <div class="fld"><label>Usage Token</label>
     <div class="grid" id="usage"></div>
     <button class="btn g" id="rstU" style="width:100%;margin-top:8px;font-size:13px">Reset usage</button></div>
+</div></div>
+
+<div class="ov" id="hisOv"><div class="sheet">
+  <div class="sh"><h2>Riwayat Chat</h2><button class="ib" data-close="hisOv"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <button class="btn" id="saveNow" style="width:100%">Simpan chat ini</button>
+  <div class="msgs" style="margin:8px 0 12px">Chat juga tersimpan otomatis ke database setiap AI selesai menjawab.</div>
+  <div id="hisList"></div>
 </div></div>
 
 <div class="ov" id="vOv"><div class="viewer">
@@ -286,7 +300,7 @@ const EXTRA={
 const EFF={Low:[1024,'low'],Medium:[4096,'medium'],High:[12288,'high'],Max:[24576,'high'],Ultracode:[32768,'high']};
 
 /* state chat */
-let msgs=[],cur=null,ctl=null,att=[],editId=null,uid=0;
+let msgs=[],cur=null,ctl=null,att=[],editId=null,uid=0,chatId=null;
 const files=new Map();
 
 /* ---------- render ---------- */
@@ -406,6 +420,7 @@ async function run(){
   cur=null;ctl=null;setBusy(false);
   const el=els.get(m.id);if(el)el.innerHTML=aHtml(m);scroll();
   if(prem)loadQuota();
+  saveChat();
 }
 function onText(m,thought,estIn){
   const t=[...thought.matchAll(/\*\*(.+?)\*\*/g)];if(t.length)m.title=t[t.length-1][1].trim();
@@ -551,7 +566,7 @@ $('#pk').addEventListener('click',e=>{const pk=$('#pk');const b=e.target.closest
 const drawEff=()=>{$('#eff').textContent='Effort · '+S.eff};
 drawEff();
 $('#eff').onclick=()=>pick($('#eff'),Object.keys(EFF).map(k=>({id:k,name:k,desc:EDESC[k]})),S.eff,it=>{S.eff=it.id;LS.s('ef',S.eff);drawEff()});
-$('#newBtn').onclick=()=>{if(cur&&ctl)ctl.abort();msgs=[];cancelEdit();render()};
+$('#newBtn').onclick=()=>{if(cur&&ctl)ctl.abort();msgs=[];chatId=null;cancelEdit();render()};
 
 $('#list').addEventListener('click',e=>{
   const sg=e.target.closest('[data-sug]');if(sg){inp.value=sg.dataset.sug;grow();inp.focus();return}
@@ -669,7 +684,7 @@ A('logout').onclick=()=>{if(sb)sb.auth.signOut()};
 async function onSess(s){
   S.sess=s;
   if(s){A('auth').classList.remove('on');await loadProfile()}
-  else{S.prem=false;if(cur&&ctl)ctl.abort();msgs=[];cur=null;render();showAuth();$('#setOv').classList.remove('on')}
+  else{S.prem=false;if(cur&&ctl)ctl.abort();msgs=[];chatId=null;cur=null;render();showAuth();$('#setOv').classList.remove('on')}
 }
 async function boot(){
   drawAmode();
@@ -709,6 +724,62 @@ function drawQuota(){
     h+='<div class="qp" style="line-height:1.6">'+flat(j.provider,'',[]).slice(0,14).map(x=>esc(x[0])+': '+esc(String(x[1]).slice(0,40))).join('<br>')+'</div>'}
   A('qBox').innerHTML=h;
 }
+
+/* ---------- riwayat chat (database) ---------- */
+function packMsgs(){
+  return msgs.filter(m=>m.st!=='run').map(m=>m.role==='user'
+    ?{role:'user',text:m.text,files:m.files.map(f=>f.text!=null?{name:f.name,type:f.type,text:f.text.slice(0,40000)}:{name:f.name,type:f.type,omitted:true})}
+    :{role:'model',text:m.text,st:m.st,stats:m.stats||null,err:m.err||''});
+}
+function unpackMsgs(a){
+  return (a||[]).map(x=>x.role==='user'
+    ?{id:++uid,role:'user',text:x.text||'',files:(x.files||[]).map(f=>f.omitted?{name:f.name,type:'text/plain',text:`[Lampiran "${f.name}" tidak disimpan di riwayat]`}:f)}
+    :{id:++uid,role:'model',text:x.text||'',st:x.st==='run'?'done':(x.st||'done'),stats:x.stats||null,err:x.err||'',title:'',tok:0,t0:0,usage:null});
+}
+let saving=false;
+async function saveChat(manual){
+  if(!sb||!S.sess||!msgs.some(m=>m.role==='user')||saving)return;
+  saving=true;
+  try{
+    const first=msgs.find(m=>m.role==='user'),title=(first.text||first.files[0]&&first.files[0].name||'Chat baru').replace(/\s+/g,' ').slice(0,60);
+    const data=packMsgs();
+    if(!chatId){
+      const {data:r,error}=await sb.from('chats').insert({user_id:S.sess.user.id,title,data}).select('id').single();
+      if(error)throw error;chatId=r.id;
+    }else{
+      const {error}=await sb.from('chats').update({data,updated_at:new Date().toISOString()}).eq('id',chatId);
+      if(error)throw error;
+    }
+    if(manual)toast('Chat tersimpan');
+  }catch(e){toast('Gagal menyimpan: '+(e.message||e))}
+  saving=false;
+}
+const dt=s=>new Date(s).toLocaleString('id-ID',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+async function drawHis(){
+  const L=A('hisList');L.innerHTML='<div class="msgs">Memuat…</div>';
+  try{
+    const {data,error}=await sb.from('chats').select('id,title,updated_at').order('updated_at',{ascending:false}).limit(100);
+    if(error)throw error;
+    L.innerHTML=data.length?data.map(c=>`<div class="hi${c.id===chatId?' on':''}"><button data-load="${c.id}"><b>${esc(c.title)}</b><small>${dt(c.updated_at)}</small></button><button class="ib" data-del="${c.id}" title="Hapus">${ic('x',16)}</button></div>`).join(''):'<div class="msgs">Belum ada chat tersimpan.</div>';
+  }catch(e){L.innerHTML=`<div class="msgs bad">✗ ${esc(e.message||e)}</div>`}
+}
+A('hisBtn').onclick=()=>{A('hisOv').classList.add('on');drawHis()};
+A('saveNow').onclick=async()=>{if(cur){toast('Tunggu AI selesai');return}if(!msgs.length){toast('Belum ada chat');return}await saveChat(true);drawHis()};
+A('hisList').addEventListener('click',async e=>{
+  const l=e.target.closest('[data-load]'),d=e.target.closest('[data-del]');
+  if(l){
+    if(cur){toast('Tunggu AI selesai atau tekan stop');return}
+    const {data,error}=await sb.from('chats').select('id,data').eq('id',l.dataset.load).single();
+    if(error){toast('Gagal memuat: '+error.message);return}
+    msgs=unpackMsgs(data.data);chatId=data.id;cancelEdit();render();A('hisOv').classList.remove('on');
+  }else if(d){
+    if(!confirm('Hapus chat ini dari database?'))return;
+    const {error}=await sb.from('chats').delete().eq('id',d.dataset.del);
+    if(error){toast('Gagal menghapus: '+error.message);return}
+    if(d.dataset.del===chatId){chatId=null;msgs=[];render()}
+    drawHis();
+  }
+});
 
 /* init */
 document.documentElement.dataset.theme=S.theme;
