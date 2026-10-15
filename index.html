@@ -378,11 +378,17 @@ function thinkCfg(model){
   if(/gemini-3/.test(model)){const lv=/flash/.test(model)?l:(l==='medium'?'high':l);return{includeThoughts:true,thinkingLevel:lv}}
   return{includeThoughts:true,thinkingBudget:/flash/.test(model)?Math.min(b,24576):b};
 }
+function ready(){
+  if(!S.sess){showAuth();return false}
+  if(S.prov==='prem'){
+    if(!S.prem){toast('Akun kamu belum Premium');openSet();return false}
+    if(!S.pmodel){toast('Pilih model premium dulu');openSet();return false}
+  }else if(!S.key||!S.model){toast('Isi API key Gemini & pilih model dulu');openSet();return false}
+  return true;
+}
 async function run(){
-  if(!S.sess){showAuth();return}
+  if(!ready())return;
   const prem=S.prov==='prem';
-  if(prem){if(!S.prem){toast('Akun kamu belum Premium');openSet();return}if(!S.pmodel){toast('Pilih model premium dulu');openSet();return}}
-  else if(!S.key||!S.model){toast('Isi API key & pilih model dulu');openSet();return}
   const last=msgs[msgs.length-1];
   const m={id:++uid,role:'model',text:'',st:'run',title:last.files.length?'Sedang Membaca Dokumen':'Sedang Memahami Permintaan',tok:0,t0:performance.now(),err:'',usage:null};
   msgs.push(m);cur=m;render();setBusy(true);
@@ -510,7 +516,7 @@ async function addFiles(list){
 function submit(){
   if(cur)return;
   const t=inp.value.trim();if(!t&&!att.length)return;
-  if(!S.key||!S.model){toast('Isi API key & pilih model dulu');openSet();return}
+  if(!ready())return;
   if(editId){const i=msgs.findIndex(m=>m.id===editId);if(i>=0)msgs=msgs.slice(0,i);cancelEdit(true)}
   msgs.push({id:++uid,role:'user',text:t,files:att});
   att=[];drawAtt();inp.value='';grow();run();
@@ -679,19 +685,28 @@ async function loadQuota(){
   try{const r=await api('quota');const j=await r.json();if(!r.ok)throw new Error(typeof j.error==='string'?j.error:'HTTP '+r.status);QJ=j;drawQuota()}
   catch(e){A('qBox').innerHTML=`<div class="msgs bad">✗ ${esc(e.message)}</div>`}
 }
-function pctOf(o,d){
-  if(o==null||typeof o!=='object'||d>3)return null;
-  for(const k of ['percent','percentage','used_percent','usage_percent','percent_used','usedPercent'])if(typeof o[k]==='number')return o[k];
-  const u=[o.used,o.usage,o.used_tokens].find(x=>typeof x==='number'),l=[o.limit,o.quota,o.total,o.total_tokens].find(x=>typeof x==='number');
-  if(u!=null&&l>0)return u/l*100;
-  for(const k in o){const r=pctOf(o[k],(d||0)+1);if(r!=null)return r}
+function flat(o,p,out){
+  if(o==null)return out;
+  if(typeof o!=='object'){out.push([p,o]);return out}
+  for(const k in o)flat(o[k],p?p+'.'+k:k,out);
+  return out;
+}
+function pctOf(o){
+  const f=flat(o,'',[]).filter(x=>typeof x[1]==='number'&&!/(^|\.)(id|created|updated|expires?)/i.test(x[0]));
+  const pick=re=>{const r=f.find(x=>re.test(x[0]));return r?r[1]:null};
+  const pc=pick(/percent|persen|pct/i);if(pc!=null)return pc;
+  const used=pick(/used|usage|consum|spent|terpakai/i),lim=pick(/limit|total|max|cap|allow|batas|quota(?!_id)/i),rem=pick(/remain|left|sisa|balance/i);
+  if(used!=null&&lim>0)return used/lim*100;
+  if(rem!=null&&lim>0)return (1-rem/lim)*100;
   return null;
 }
 function qBar(lb,u,l){const p=Math.min(100,u/l*100);return `<div class="qr"><div class="qt"><span>${lb}</span><b>${p.toFixed(p<10?1:0)}%</b></div><div class="bar"><i style="width:${p}%;${p>=85?'background:var(--er)':''}"></i></div><small>${fmtN(u)} / ${fmtN(l)} token</small></div>`}
 function drawQuota(){
   const j=QJ;if(!j)return;
   let h=qBar('Minggu ini (7 hari terakhir)',j.week.used,j.week.limit)+qBar('Hari ini · reset 00:00 WIB',j.day.used,j.day.limit);
-  if(j.provider!=null){const p=pctOf(j.provider,0);h+=`<div class="qp">Kuota Dattio: ${p!=null?'<b>'+p.toFixed(1)+'%</b> terpakai':esc(JSON.stringify(j.provider).slice(0,140))}</div>`}
+  if(j.provider!=null){const p=pctOf(j.provider);
+    h+=`<div class="qp">Kuota Dattio: ${p!=null?'<b>'+Math.max(0,Math.min(100,p)).toFixed(1)+'%</b> terpakai':'(persen belum terbaca)'}</div>`;
+    h+='<div class="qp" style="line-height:1.6">'+flat(j.provider,'',[]).slice(0,14).map(x=>esc(x[0])+': '+esc(String(x[1]).slice(0,40))).join('<br>')+'</div>'}
   A('qBox').innerHTML=h;
 }
 
