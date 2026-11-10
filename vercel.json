@@ -1,1 +1,4 @@
-{ "functions": { "api/dattio.js": { "maxDuration": 60 } } }
+{
+  "outputDirectory": ".",
+  "functions": { "api/chat.js": { "maxDuration": 300 } }
+}
